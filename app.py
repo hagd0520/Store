@@ -6,10 +6,12 @@ from db import items, stores
 
 app = Flask(__name__)
 
+
 @app.get('/store') # http://127.0.0.1:5000/store
 def get_stores():
     print(type(stores.values()))
     return {'stores': list(stores.values())}
+
 
 @app.post('/store')
 def create_store():
@@ -30,6 +32,7 @@ def create_store():
     store = {**store_data, "id": store_id}
     stores[store_id] = store
     return store, 201
+
 
 @app.post('/item')
 def create_item():
@@ -72,6 +75,42 @@ def get_item(item_id):
         return items[item_id]
     except KeyError:
         return abort(404, message = "Item not found.")
+    
+    
+@app.delete("/item/<string:item_id>")
+def delete_item(item_id):
+    try:
+        del items[item_id]
+        return {"message": "item deleted."}
+    except KeyError:
+        abort(404, message="Item not found.")
+        
+        
+@app.put("/item/<string:item_id>")
+def update_item(item_id):
+    item_data = request.get_json()
+    if "price" not in item_data or "name" not in item_data:
+        abort(400, message="Bad request. Ensure 'price', and 'name' are included in the JSON payload.")
+        
+    try:
+        item = items[item_id]
+        print("before item:",item)
+        item |= item_data
+        print("after item:", item)
+        
+        return item
+    except KeyError:
+        abort(404, message="Item not found.")
+        
+        
+@app.delete("/store/<string:store_id>")
+def delete_store(store_id):
+    try:
+        del stores[store_id]
+        return {"message": "Store deleted."}
+    except KeyError:
+        abort(404, message="Store not found.")
+    
     
 @app.get('/item') # http://127.0.0.1:5000/store
 def get_all_items():
