@@ -1,13 +1,17 @@
-from os import access
+import os
+from flask import current_app
 from flask.views import MethodView
 from flask_jwt_extended import create_access_token, create_refresh_token, get_jwt, get_jwt_identity, jwt_required
 from flask_smorest import Blueprint, abort
 from passlib.hash import pbkdf2_sha256
+import requests
+from sqlalchemy import or_
 
 from blocklist import BLOCKLIST
 from db import db
 from models import UserModel
-from schemas import UserSchema
+from schemas import UserRegisterSchema, UserSchema
+from tasks import send_user_registration_email
 
 
 blp = Blueprint("Users", "users", description="Operations on users")
@@ -15,19 +19,25 @@ blp = Blueprint("Users", "users", description="Operations on users")
 
 @blp.route("/register")
 class UserRegister(MethodView):
-    @blp.arguments(UserSchema)
+    @blp.arguments(UserRegisterSchema)
     def post(self, user_data):
-        print("--------------")
-        print(dict(user_data))
-        if UserModel.query.filter(UserModel.username == user_data["username"]).first():
-            abort(409, message="A user with that username already exists.")
+        if UserModel.query.filter(
+            or_(
+                UserModel.username == user_data["username"],
+                UserModel.email == user_data["email"]
+            )
+        ).first():
+            abort(409, message="A user with that username or email already exists.")
             
         user = UserModel(
             username=user_data["username"],
+            email=user_data["email"],
             password=pbkdf2_sha256.hash(user_data["password"])
         )
         db.session.add(user)
         db.session.commit()
+        
+        current_app.queue.enqueue(send_user_registration_email, user.email, user.username)
         
         return {"message": "User created successfully."}, 201
     
@@ -36,7 +46,7 @@ class UserRegister(MethodView):
 class UserLogin(MethodView):
     @blp.arguments(UserSchema)
     def post(self, user_data):
-        user = UserModel.query.filter(
+        user = UserModel.query.filter( 
             UserModel.username == user_data["username"]
         ).first()
         
@@ -66,6 +76,13 @@ class UserLogout(MethodView):
         jti = get_jwt()["jti"]
         BLOCKLIST.add(jti)
         return {"message": "Successfully logged out."}
+    
+    
+@blp.route("/user")
+class User(MethodView):
+    @blp.response(200, UserSchema(many=True))
+    def get(self):
+        return UserModel.query.all()
     
 
 @blp.route("/user/<int:user_id>")
