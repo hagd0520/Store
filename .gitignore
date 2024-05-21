@@ -1,2 +1,7 @@
 # Byte-compiled
 __pycache__/
+.env
+.vscode
+data.db
+*.pyc
+.DS_Store
